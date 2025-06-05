@@ -5,7 +5,7 @@ from app.api.auth import router as auth_router
 from app.api.register import router as register_router
 from app.api.api_v1.endpoints import user
 from app.api.api_v1.endpoints import agent
-
+from app.api.api_v1.endpoints.agents import chat_ws
 app = FastAPI()
 
 # Configuración del middleware de CORS
@@ -28,7 +28,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(register_router, prefix="/register", tags=["register"])
 app.include_router(user.router, prefix="/user", tags=["user"])
 app.include_router(agent.router, prefix="/agents", tags=["agents"])
-
+app.include_router(chat_ws.router)
 @app.get("/")
 async def homepage():
     return {"message": "Hello World"}

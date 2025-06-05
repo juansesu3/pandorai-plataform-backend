@@ -19,3 +19,4 @@ db = client.pandorai_db
 collection = db['pandorai_plat_db']
 users_collection = db['users']
 agents_collection = db['agents']
+chats_collection =db['chats']
