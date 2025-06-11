@@ -3,11 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from app.core.config import users_collection  # Importa desde la configuración correcta
+from app.db.mongo import users_collection  # Importa desde la configuración correcta
 from app.models.user import User
 from datetime import datetime, timedelta
 from bson import ObjectId
 import os
+
 
 router = APIRouter()
 
@@ -25,7 +26,7 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 async def authenticate_user(email: str, password: str):
-    user = users_collection.find_one({"email": email})  # Cambia a find_one si no estás usando motor
+    user = await users_collection.find_one({"email": email})  # Cambia a find_one si no estás usando motor
     if not user:
         return False
     if not verify_password(password, user['hashed_password']):

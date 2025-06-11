@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from datetime import datetime
 from typing import Optional
-from app.core.config import users_collection
+from app.db.mongo import users_collection
 from app.api.auth import get_current_user  # Importamos la función que valida el token
 
 router = APIRouter()

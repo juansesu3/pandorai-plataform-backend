@@ -1,22 +1,29 @@
+# app/api/v1/routes/websocket_calendar.py
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.services.agent_calendar.calenddar_agent_services import CalendarAgentService
 from datetime import datetime
-from app.core.config import chats_collection
-from app.services.agent_logic import responder_agente
+import json
 
 router = APIRouter()
+
 @router.websocket("/ws/chat")
-async def websocket_chat(websocket: WebSocket):
+async def websocket_calendar(websocket: WebSocket):
     await websocket.accept()
     try:
+        # Primer mensaje debe contener userUUID
+        initial_data = await websocket.receive_text()
+        data = json.loads(initial_data)
+        session_id = data.get("userUUID", "default_session")
+        user_message = data.get("message", "")
+
         while True:
-            user_message = await websocket.receive_text()
-            ai_response = responder_agente(user_message)
-            chats_collection.insert_one({
-                "user_message": user_message,
-                "ai_response": ai_response,
-                "timestamp": datetime.utcnow()
-            })
-            await websocket.send_text(ai_response)
-            
+            result = await CalendarAgentService.generate_answer(user_message, session_id=session_id)
+            await websocket.send_text(result["response"])
+
+            next_data = await websocket.receive_text()
+            data = json.loads(next_data)
+            user_message = data.get("message", "")
+
     except WebSocketDisconnect:
-        print("Cliente desconectado del chat")
+        print("Cliente desconectado del asistente de calendario")

@@ -1,22 +1,35 @@
-from pymongo.mongo_client import MongoClient
-from pymongo.server_api import ServerApi
-from dotenv import load_dotenv
-import os
+# app/core/config.py
+from pydantic_settings import BaseSettings
 
-# Cargar las variables de entorno desde el archivo .env
-load_dotenv()
+class Settings(BaseSettings):
+    # Configuración general
+    app_name: str = "My Ecommerce API"
+    # Configuración de MongoDB
+    mongodb_uri: str
+    mongo_db: str
+    openai_api_key: str
+    jwt_secret: str
+    jwt_algorithm: str
+    stripe_secret_key: str
+    stripe_public_key: str
+    stripe_webhook_secret: str
+    # Configuración de OpenAI
+    openai_api_key: str
 
-# Obtener la URI de MongoDB desde las variables de entorno
-uri = os.getenv("MONGODB_URI")
+    # Configuración de Pinecone
+    pinecone_api_key: str
+    pinecone_environment: str
+    pinecone_index: str
 
-if not uri:
-    raise Exception("MONGODB_URI not found in environment variables")
+    # Configuración de LangChain (LangSmith)
+    langchain_tracing_v2: bool  # True/False
+    langchain_endpoint: str
+    langchain_api_key: str
+    langchain_project: str
 
-# Disable SSL certificate verification (not recommended for production)
-client = MongoClient(uri, server_api=ServerApi('1'), tls=True, tlsAllowInvalidCertificates=True)
+    class Config:
+        env_file = ".env"  # Archivo desde donde se cargan las variables
 
-db = client.pandorai_db
-collection = db['pandorai_plat_db']
-users_collection = db['users']
-agents_collection = db['agents']
-chats_collection =db['chats']
+
+# Instancia global para usar en toda la app
+settings = Settings()

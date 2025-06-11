@@ -2,17 +2,19 @@
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
+from datetime import datetime
 
-class AgentConfig(BaseModel):
-    available_days: List[str] = Field(default_factory=lambda: ["Monday", "Tuesday", "Wednesday"])
-    hours: str = "09:00-13:00,14:00-18:00"
-    interval: int = 30  # en minutos
+
 
 class Agent(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid4()))
-    user_id: str
+    speciality: Optional[str] = None
     name: str
     description: Optional[str] = None
     model: str = "gpt-4-turbo"
-    config: AgentConfig = Field(default_factory=AgentConfig)
-    active: bool = True
+    prompt: str = ""
+    temperature: float = 0.7
+    max_token: int = 1000
+    language: str = "es"
+    created_at: datetime
+    updated_at: datetime
