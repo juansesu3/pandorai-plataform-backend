@@ -5,7 +5,8 @@ from typing import List
 from datetime import datetime
 from app.api.auth import get_current_user
 from app.schemas.agent_schema import AgentCreate, AgentOut
-from app.db.mongo import agents_collection  # MongoDB collection
+from app.schemas.client_schema import ClientOut
+from app.db.mongo import agents_collection, clients_collection  # MongoDB collection
 from bson import ObjectId
 router = APIRouter()
 
@@ -63,3 +64,28 @@ async def get_agent_by_id(agent_id: str):
     agent["id"] = str(agent["_id"])
     del agent["_id"]
     return agent
+
+@router.get("/{agent_id}/clients", response_model=List[ClientOut])
+async def get_clients_by_agent(agent_id: str):
+    if not ObjectId.is_valid(agent_id):
+        raise HTTPException(status_code=400, detail="ID de agente inválido")
+
+    agent = await agents_collection.find_one({"_id": ObjectId(agent_id)})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente no encontrado")
+
+    client_ids = agent.get("clientIds", [])
+    if not client_ids:
+        return []
+
+    # Convertir los IDs de cliente a ObjectId para la consulta
+    object_ids = [ObjectId(cid) for cid in client_ids if ObjectId.is_valid(cid)]
+
+    cursor = clients_collection.find({"_id": {"$in": object_ids}})
+    clients = []
+    async for client in cursor:
+        client["id"] = str(client["_id"])
+        del client["_id"]
+        clients.append(client)
+
+    return clients
