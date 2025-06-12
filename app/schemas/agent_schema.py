@@ -20,4 +20,5 @@ class AgentCreate(BaseModel):
 
 class AgentOut(AgentCreate):
     id: str
+    clientIds: List[str]
     created_at: Optional[datetime] = None

@@ -18,3 +18,4 @@ class Agent(BaseModel):
     language: str = "es"
     created_at: datetime
     updated_at: datetime
+    clientIds: List[str] 
