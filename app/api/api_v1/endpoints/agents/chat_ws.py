@@ -1,29 +1,23 @@
-# app/api/v1/routes/websocket_calendar.py
+# app/api/v1/routes/chat_ws.py
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.services.agent_calendar.calenddar_agent_services import CalendarAgentService
-from datetime import datetime
+from typing import Dict
 import json
 
 router = APIRouter()
 
-@router.websocket("/ws/chat")
-async def websocket_calendar(websocket: WebSocket):
+# Guardamos sockets abiertos para cada sesión cliente-agente
+active_connections: Dict[str, WebSocket] = {}
+
+@router.websocket("/ws/agents/{agent_id}/chat")
+async def chat_ws(websocket: WebSocket, agent_id: str, client_id: str):
     await websocket.accept()
+    session_key = f"{client_id}-{agent_id}"
+    active_connections[session_key] = websocket
+
     try:
-        # Primer mensaje debe contener userUUID
-        initial_data = await websocket.receive_text()
-        data = json.loads(initial_data)
-        session_id = data.get("userUUID", "default_session")
-        user_message = data.get("message", "")
-
         while True:
-            result = await CalendarAgentService.generate_answer(user_message, session_id=session_id)
-            await websocket.send_text(result["response"])
-
-            next_data = await websocket.receive_text()
-            data = json.loads(next_data)
-            user_message = data.get("message", "")
-
+            await websocket.receive_text()  # Puedes recibir mensajes si necesitas
     except WebSocketDisconnect:
-        print("Cliente desconectado del asistente de calendario")
+        del active_connections[session_key]
+        print(f"🔌 WS desconectado: {session_key}")

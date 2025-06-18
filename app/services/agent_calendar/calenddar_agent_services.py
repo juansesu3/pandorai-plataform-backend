@@ -5,12 +5,16 @@ from langchain.memory import ConversationBufferMemory
 from langchain_openai import ChatOpenAI
 from langchain.schema import AIMessage, HumanMessage, BaseMessage
 from langchain.prompts import SystemMessagePromptTemplate, HumanMessagePromptTemplate, ChatPromptTemplate, MessagesPlaceholder
-from app.services.mongo_chat_history import MongoDBChatMessageHistory
 from app.core.config import settings
-from app.services.agent_calendar.calendar_service import get_availability, create_event, modify_event, cancel_event
+from app.services.agent_calendar.appointments_service import create_appointment
+from app.services.agent_calendar.availability_service import get_available_slots
 from typing import Dict, Any
 import os
 import re
+import asyncio
+from datetime import datetime
+from langchain.tools import StructuredTool
+from app.services.mongo_chat_history import ConversationChatHistory
 
 def convert_markdown_to_html(text: str) -> str:
     text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", text)
@@ -40,36 +44,37 @@ if settings.langchain_tracing_v2:
 
 # Tools
 tools = [
-    Tool(
-        name="check_availability",
-        func=get_availability,
-        coroutine=get_availability,
-        description="Consulta los horarios disponibles para una fecha específica."
+    StructuredTool.from_function(
+        name="get_available_slots",
+        description="Consulta los horarios disponibles. Requiere: professional_name y date.",
+        func=get_available_slots,
+        coroutine=get_available_slots  # si es async
     ),
+    
     Tool(
         name="create_appointment",
-        func=create_event,
-        coroutine=create_event,
-        description="Crea una nueva cita con la información proporcionada por el usuario."
+        func=create_appointment,            # Para usar en modo síncrono
+        coroutine=create_appointment,       # Para uso asíncrono
+        description="Crea una cita con un profesional. Requiere: clientId, professionalId, date, time, duration, userInfo"
     ),
-    Tool(
-        name="modify_appointment",
-        func=modify_event,
-        coroutine=modify_event,
-        description="Modifica una cita existente con los nuevos detalles."
-    ),
-    Tool(
-        name="cancel_appointment",
-        func=cancel_event,
-        coroutine=cancel_event,
-        description="Cancela una cita existente."
-    )
+    # Tool(
+    #     name="modify_appointment",
+    #     func=modify_event,
+    #     coroutine=modify_event,
+    #     description="Modifica una cita existente con los nuevos detalles."
+    # ),
+    # Tool(
+    #     name="cancel_appointment",
+    #     func=cancel_event,
+    #     coroutine=cancel_event,
+    #     description="Cancela una cita existente."
+    # )
 ]
 
 # System Prompt
 system_prompt = """
 You are Aurora, a professional calendar assistant. Your role is to help users:
-- Check availability
+- get available slots
 - Create, modify, or cancel appointments
 - Send appointment confirmations or reminders
 
@@ -88,16 +93,24 @@ human_prompt = "{input}"
 prompt = ChatPromptTemplate.from_messages([
     SystemMessagePromptTemplate.from_template(system_prompt),
     MessagesPlaceholder("chat_history"),
-    HumanMessagePromptTemplate.from_template(human_prompt)
+    HumanMessagePromptTemplate.from_template("Hoy es {current_date}. {input}")
 ])
 
 class CalendarAgentService:
 
     @staticmethod
-    async def generate_answer(question: str, session_id: str) -> Dict[str, Any]:
-        agent_name = "Aurora"
-        chat_history = MongoDBChatMessageHistory(agent_name, session_id)
-        await chat_history._load_messages()
+    async def generate_answer(question: str, client_id: str, agent_id: str, contact_id: str) -> Dict[str, Any]:
+        
+        print(f"Generating answer for question: {question}")
+        # Ensure the chat history is loaded
+        
+       
+        
+        chat_history = ConversationChatHistory(client_id, agent_id, contact_id)
+        # 🧠 Carga el historial manualmente
+        messages = await chat_history.aget_messages()
+        chat_history.messages = messages
+        print(f"Chat history messages: {chat_history.messages}")
 
         memory = ConversationBufferMemory(
             chat_memory=chat_history,
@@ -105,11 +118,11 @@ class CalendarAgentService:
             return_messages=True,
             output_key="output"
         )
-
+        
         agent_executor = initialize_agent(
             tools=tools,
             llm=llm,
-            agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION,
+            agent=AgentType.OPENAI_FUNCTIONS,
             verbose=True,
             memory=memory,
             agent_kwargs={"system_message": system_prompt},
@@ -117,8 +130,13 @@ class CalendarAgentService:
             max_iterations=3
         )
 
-        await chat_history.add_message(HumanMessage(content=question))
-        result = await agent_executor.ainvoke({"input": question})
+        # await chat_history.add_message(HumanMessage(content=question))
+        
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        combined_input = f"Hoy es {today_str}. {question}"
+        result = await agent_executor.ainvoke({
+            "input": combined_input
+        })
 
         if isinstance(result, dict):
             response = result.get("output", "")
@@ -128,12 +146,14 @@ class CalendarAgentService:
         response_text = response.content if isinstance(response, BaseMessage) else response
         response_text = ensure_html_format(response_text)
 
-        if response_text:
-            await chat_history.add_message(AIMessage(content=response_text))
+        # if response_text:
+        #     await chat_history.add_message(AIMessage(content=response_text))
 
         return {
             "response": response_text,
             "metadata": {
-                "session_id": session_id
+                "client_id": client_id,
+                "agent_id": agent_id,
+                "contact_id": contact_id
             }
         }

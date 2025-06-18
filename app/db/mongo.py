@@ -21,4 +21,6 @@ users_collection = db['users']
 agents_collection = db['agents']
 chats_collection = db['chats']
 clients_collection = db["clients"]
-
+conversations_collection = db["conversations"]
+professionals_collection = db["professionals"] 
+appointments_collection = db["appointments"]

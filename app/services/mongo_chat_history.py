@@ -1,82 +1,61 @@
+# app/services/agent_calendar/conversation_chat_history.py
+
 from langchain.memory.chat_memory import BaseChatMessageHistory
-from langchain.schema import BaseMessage, AIMessage, HumanMessage
-from app.db.mongo import agents_collection
-from app.services.agents_services import get_or_create_conversation  # Importamos la función
+from langchain.schema import AIMessage, HumanMessage, BaseMessage
 from typing import List
+from app.db.mongo import conversations_collection
 from datetime import datetime
 
 
-class MongoDBChatMessageHistory(BaseChatMessageHistory):
-    def __init__(self, agent_name: str, session_id: str):
-        self.agent_name = agent_name
-        self.session_id = session_id
-        self.messages = None # Usamos None para saber si ya se cargaron los mensajes
-
-    async def _load_messages(self):
-        """Carga los últimos 20 mensajes desde MongoDB de forma asíncrona."""
-        if self.messages is not None:
-            return  # Si ya se cargaron, no volver a hacerlo
-
-        # 🔹 Asegurar que la conversación existe antes de cargar mensajes
-        await get_or_create_conversation(self.agent_name, self.session_id)
-
-        agent_doc = await agents_collection.find_one(
-            {'name': self.agent_name, 'conversations.uuid': self.session_id},
-            {'conversations.$': 1}  # Solo traemos la conversación relevante
-        )
-
-        if not agent_doc or 'conversations' not in agent_doc:
-            self.messages = []
-            return
-
-        conversation = agent_doc['conversations'][0]  # Solo obtenemos la conversación filtrada
-        sorted_messages = sorted(
-            conversation.get('messages', []),
-            key=lambda x: x['time'],
-            reverse=True
-        )[:20]  # Limitar a 20 mensajes
-
-        self.messages = [
-            HumanMessage(content=msg['text']) if msg['sender'] == 'user' else AIMessage(content=msg['text'])
-            for msg in reversed(sorted_messages)  # Revertimos para mantener orden cronológico
-        ]
+class ConversationChatHistory(BaseChatMessageHistory):
+    def __init__(self, client_id: str, agent_id: str, contact_id: str):
+        self.client_id = client_id
+        self.agent_id = agent_id
+        self.contact_id = contact_id
+        self.messages: List[BaseMessage] = []
 
     async def aget_messages(self) -> List[BaseMessage]:
-        """Devuelve los mensajes cargados en el historial."""
-        if self.messages is None:
-            await self._load_messages()
-        return self.messages
+        convo = await conversations_collection.find_one({
+            "clientId": self.client_id,
+            "agentId": self.agent_id,
+            "contactId": self.contact_id
+        })
+        
+        
+        
+        if not convo or "messages" not in convo:
+            print("⚠️ No se encontraron mensajes previos.")
+            return []
 
-    async def add_message(self, message: BaseMessage):
-        """Agrega un mensaje al historial y lo almacena en MongoDB."""
-        # 🔹 Asegurar que la conversación existe antes de guardar un mensaje
-        await get_or_create_conversation(self.agent_name, self.session_id)
+        raw_messages = convo["messages"][-10:]
+        print(f"⚠️ Cargando {len(raw_messages)} mensajes previos.")
+        messages = []
 
-        if self.messages is None:
-            await self._load_messages()
+        for msg in raw_messages:
+            if msg["sender"] == "admin" or msg["sender"] == self.contact_id:
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg["sender"] == "agent":
+                messages.append(AIMessage(content=msg["content"]))
 
-        self.messages.append(message)
+        self.messages = messages
+        return messages
 
-        sender = 'user' if isinstance(message, HumanMessage) else 'bot'
-        message_data = {
-            'sender': sender,
-            'text': message.content,
-            'time': datetime.utcnow()
-        }
-
-        await agents_collection.update_one(
-            {'name': self.agent_name, 'conversations.uuid': self.session_id},
-            {'$push': {'conversations.$.messages': message_data}},
-            upsert=True
-        )
+    def add_message(self, message: BaseMessage):
+        # noop: handled by backend already
+        pass
 
     async def clear(self):
-        """Vacía el historial de mensajes tanto en memoria como en MongoDB."""
-        # 🔹 Asegurar que la conversación existe antes de limpiarla
-        await get_or_create_conversation(self.agent_name, self.session_id)
-
-        self.messages = []  # También vaciamos la lista en memoria
-        await agents_collection.update_one(
-            {'name': self.agent_name, 'conversations.uuid': self.session_id},
-            {'$set': {'conversations.$.messages': []}}
+        await conversations_collection.update_one(
+            {
+                "clientId": self.client_id,
+                "agentId": self.agent_id,
+                "contactId": self.contact_id
+            },
+            {
+                "$set": {
+                    "messages": [],
+                    "updatedAt": datetime.utcnow()
+                }
+            }
         )
+        self.messages = []
